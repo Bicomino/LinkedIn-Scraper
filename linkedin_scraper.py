@@ -63,7 +63,9 @@ def hacer_scroll_completo(driver):
 # Configuración del navegador con perfil persistente
 profile_path = os.path.join(os.getcwd(), "edge_profile")
 edge_options = Options()
-# edge_options.add_argument("--headless")
+# edge_options.add_argument("--headless=new")
+# edge_options.add_argument("--disable-gpu") Opciones para usuario root y otros problemas que puedan existir
+# edge_options.add_argument("--no-sandbox")
 edge_options.add_argument(f"--user-data-dir={profile_path}")
 edge_options.add_argument("--start-maximized")
 edge_options.add_argument("--disable-blink-features=AutomationControlled")
