@@ -126,7 +126,6 @@ The JSON file contains:
       "ubicacionExperiencia": "...",
       "descripcionExperiencia": "..."
     }
-    /* … */
   ],
   "educacion": [ /* … */ ],
   "licencias y certificaciones": [ /* … */ ],
