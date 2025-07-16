@@ -1,0 +1,548 @@
+Guía de Usuario: Despliegue del Scraper de LinkedIn en Servidor Linux
+
+Esta guía te ayudará a instalar y configurar el scraper de LinkedIn (linkedin_scraper_chrome.py) en un servidor Linux. El proceso está diseñado para automatizar la ejecución del scraper y permitir la resolución manual de desafíos de seguridad de LinkedIn (como los puzzles CAPTCHA) a través de una interfaz gráfica remota, si fuera necesario.
+
+Archivo del Script: linkedin_scraper_chrome.py (este te lo proporcionaré por separado).
+
+---
+
+Índice
+
+1. Introducción
+2. Requisitos Previos
+3. Parte 1: Preparación del Servidor Linux (Configuración Inicial)
+    * 1.1. Conexión al Servidor
+    * 1.2. Actualización del Sistema e Instalación de Software Básico
+    * 1.3. Instalación de Google Chrome
+    * 1.4. Configuración del Entorno Gráfico Virtual (Xvfb y Xfce)
+    * 1.5. Configuración del Servidor VNC (X11VNC)
+    * 1.6. Configuración del Firewall (UFW)
+4. Parte 2: Preparación del Script en el Servidor
+    * 4.1. Transferencia del Script
+    * 4.2. Descarga Manual de Chromedriver (Opcional)
+    * 4.3. Instalación de Dependencias de Python
+    * 4.4. Configuración de Permisos de Chromedriver
+    * 4.5. Actualización de Credenciales en el Script
+    * 4.6. Configuración del Entorno de Pantalla en el Script
+5. Parte 3: Primera Ejecución y Autenticación de LinkedIn (Intervención Manual)
+    * 5.1. Conexión al Servidor VNC (Detallado)
+    * 5.2. Ejecución del Script y Resolución del Puzzle
+6. Parte 4: Ejecuciones Futuras (Automatizadas)
+    * 6.1. Ejecución Manual Vía SSH
+7. Solución de Problemas Comunes
+8. Notas Importantes
+
+---
+
+1. Introducción
+
+El script linkedin_scraper_chrome.py está diseñado para extraer información de perfiles de LinkedIn de manera programática. Para funcionar, requiere un navegador web (Google Chrome) y, debido a las medidas de seguridad de LinkedIn, se ejecuta en un entorno gráfico real (no en modo "headless") para manejar posibles desafíos de seguridad como los puzzles CAPTCHA.
+
+Esta guía te permitirá configurar tu servidor Linux para que el script pueda ejecutarse de forma persistente, con un entorno gráfico virtual siempre disponible para Selenium.
+
+---
+
+2. Requisitos Previos
+
+Antes de empezar, asegúrate de tener:
+
+* Un servidor Linux (se asume Ubuntu/Debian, como los VPS más comunes).
+* Acceso SSH al servidor (usuario y contraseña o clave SSH).
+* Un cliente SSH en tu ordenador local (ej. Terminal en macOS/Linux, PuTTY o Termius en Windows).
+* Un cliente VNC en tu ordenador local (ej. TightVNC Viewer, RealVNC Viewer, VNC Connect).
+* El archivo linkedin_scraper_chrome.py. El ejecutable chromedriver (versión para Linux, compatible con Google Chrome estable) puede ser descargado automáticamente por undetected-chromedriver o descargado manualmente en el servidor como se describe en esta guía.
+
+---
+
+3. Parte 1: Preparación del Servidor Linux (Configuración Inicial)
+
+Estos pasos se realizan una sola vez para configurar el entorno del servidor.
+
+3.1. Conexión al Servidor
+
+Abre tu terminal (o cliente SSH) y conéctate a tu servidor:
+
+ssh tu_usuario@la_ip_de_tu_servidor
+
+(Reemplaza tu_usuario con tu nombre de usuario en el servidor, por ejemplo, test si es tu usuario de prueba, y la_ip_de_tu_servidor con la dirección IP o dominio de tu servidor.)
+
+3.2. Actualización del Sistema e Instalación de Software Básico
+
+Actualiza tu servidor y instala las herramientas esenciales:
+
+sudo apt update
+sudo apt upgrade -y
+sudo apt install python3 python3-pip wget curl nano -y
+
+3.3. Instalación de Google Chrome
+
+Instala Google Chrome, que es necesario para undetected-chromedriver:
+
+# Descargar la clave de Google GPG
+wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+
+# Añadir el repositorio de Chrome a las fuentes de APT
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+
+# Actualizar la lista de paquetes nuevamente para incluir el repositorio de Chrome
+sudo apt update
+
+# Instalar Google Chrome Estable
+sudo apt install google-chrome-stable -y
+
+# Instalar dependencias adicionales de Chrome para entornos headless/virtuales
+sudo apt install libglib2.0-0 libnss3 libfontconfig1 libxrandr2 libxcomposite1 libxcursor1 libxdamage1 libxi6 libxtst6 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgtk-3-0 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 -y
+
+3.4. Configuración del Entorno Gráfico Virtual (Xvfb y Xfce)
+
+Esto crea una "pantalla virtual" y un entorno de escritorio ligero para que Chrome pueda ejecutarse.
+
+3.4.1. Instalar Xfce y TightVNC Server
+
+sudo apt install xfce4 xfce4-goodies x11vnc tightvncserver xvfb -y
+
+3.4.2. Crear el Archivo de Configuración de Inicio de VNC
+
+Antes de editar xstartup, necesitas que el directorio y el archivo se creen. Para ello, inicia el servidor VNC brevemente:
+
+vncserver
+
+Al finalizar, verás un mensaje similar a:
+
+New 'X' desktop is su_servidor:1
+Starting applications specified in /home/tu_usuario/.vnc/xstartup
+Log file is /home/tu_usuario/.vnc/su_servidor:1.log
+
+Esto confirma que el directorio ~/.vnc/ y el archivo xstartup se han creado.
+
+Es crucial detener esta sesión temporal para que puedas editar su configuración:
+
+vncserver -kill :1
+
+Este archivo le dice a VNC qué entorno de escritorio cargar cuando se inicia una sesión VNC.
+
+nano ~/.vnc/xstartup
+
+Borra o comenta todo el contenido que encuentres ahí (añadiendo un # al principio de cada línea) y añade estas dos líneas al final del archivo:
+
+#!/bin/bash
+startxfce4 &
+
+Guarda el archivo (Ctrl+X, luego Y, luego Enter).
+
+3.4.3. Dar Permisos al Archivo de Configuración
+
+chmod +x ~/.vnc/xstartup
+
+3.4.4. Crear el Archivo de Contraseña VNC
+
+Genera la contraseña que usarás para conectarte vía VNC. Recuerda esta contraseña, la necesitarás más tarde.
+
+vncpasswd
+
+(Te pedirá introducir y verificar una contraseña. Si te pregunta por una contraseña de solo lectura, puedes ignorarla.)
+
+Importante: Ahora, detén cualquier sesión VNC que se haya iniciado automáticamente después de vncpasswd:
+
+vncserver -kill :1 (ya se ha hecho antes pero para prevenir)
+
+3.5. Configuración de los Servicios de Sistema (systemd) para VNC
+
+Para que el entorno gráfico virtual (Xvfb) y el servidor VNC (x11vnc) se inicien automáticamente al arrancar el servidor y estén siempre disponibles, los configuraremos como servicios de systemd.
+
+Paso Crucial: Asegúrate de reemplazar tu_usuario por tu nombre de usuario real en el servidor (ej. test).
+
+3.5.1. Crear el Archivo de Servicio para Xvfb
+
+sudo nano /etc/systemd/system/xvfb.service
+
+Pega el siguiente contenido:
+
+[Unit]
+Description=X Virtual Framebuffer Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset
+Type=simple
+User=tu_usuario  # <--- ¡REEMPLAZA AQUÍ! Por ejemplo: User=test
+Group=tu_usuario # <--- ¡REEMPLAZA AQUÍ! Por ejemplo: Group=test
+Restart=always
+RestartSec=5s
+Environment="DISPLAY=:99"
+
+[Install]
+WantedBy=multi-user.target
+
+Guarda el archivo (Ctrl+X, luego Y, luego Enter).
+
+3.5.2. Crear el Archivo de Servicio para X11VNC
+
+Instalaremos x11vnc para que se conecte a la pantalla de Xfce que configuramos.
+
+Primero, instala x11vnc si no lo tienes:
+sudo apt install x11vnc -y
+
+Ahora, crea el archivo de servicio:
+sudo nano /etc/systemd/system/x11vnc.service
+
+Pega el siguiente contenido:
+
+[Unit]
+Description=X11VNC Server
+After=network.target xvfb.service # Asegura que se inicie después de Xvfb
+
+[Service]
+ExecStart=/usr/bin/x11vnc -display :99 -forever -loop -rfbport 5999 -o /home/tu_usuario/x11vnc.log -rfbauth /home/tu_usuario/.vnc/passwd -noxdamage -shared -bg
+Type=forking
+User=tu_usuario  # <--- ¡REEMPLAZA AQUÍ! Por ejemplo: User=test
+Group=tu_usuario # <--- ¡REEMPLAZA AQUÍ! Por ejemplo: Group=test
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+
+Puntos Clave en ExecStart:
+* tu_usuario: ¡MUY IMPORTANTE! Reemplaza todas las instancias de tu_usuario con tu nombre de usuario real (ej. test) en esta línea y en las líneas User y Group.
+* -display :99: Se conecta a la pantalla virtual que crea Xvfb.
+* -rfbport 5999: Este es el puerto VNC que usarás para conectar.
+* -o /home/tu_usuario/x11vnc.log: Registra la actividad de x11vnc en un archivo en tu directorio de inicio, donde tienes permisos.
+* -rfbauth /home/tu_usuario/.vnc/passwd: Utiliza el archivo de contraseña VNC que creaste con vncpasswd.
+
+Guarda el archivo (Ctrl+X, luego Y, luego Enter).
+
+Alternativa si no funciona X11VNC:
+
+[Unit]
+Description=X11VNC Server
+After=network.target xvfb.service
+
+[Service]
+ExecStart=/usr/bin/x11vnc -display :99 -auth /home/outbounders/.Xauthority -forever -loop -rfbport 5999 -o /home/outbounders/x11vnc.log -rfbauth /home/outbounders/.vnc/passwd -noxdamage -shared
+Type=simple
+User=outbounders
+Group=outbounders
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+
+Alternativa:
+
+[Unit]
+Description=X11VNC Server
+After=xvfb.service
+
+[Service]
+ExecStart=/usr/bin/x11vnc -display :99 -auth "/var/run/xdmctl/outbounders-*.auth" -forever -loop -rfbp -rfbport 5999 -o /home/outbounders/x11vnc.log -rfbauth /home/outbounders/.vnc/passwd -noxdamage -sage -shared  
+Type=simple
+User=outbounders
+Group=outbounders
+Restart=always
+RestartSec=5s
+Environment="DISPLAY=:99"
+
+[Install]
+WantedBy=multi-user.target
+
+3.5.3. Recargar Systemd y Habilitar/Iniciar los Servicios
+
+sudo systemctl daemon-reload           # Recarga los archivos de configuración de systemd
+sudo systemctl enable xvfb.service     # Habilita Xvfb para iniciar en el arranque
+sudo systemctl start xvfb.service      # Inicia Xvfb ahora
+sudo systemctl enable x11vnc.service   # Habilita X11VNC para iniciar en el arranque
+sudo systemctl start x11vnc.service    # Inicia X11VNC ahora
+
+3.5.4. Verificar el Estado de los Servicios
+
+Asegúrate de que ambos servicios estén funcionando correctamente:
+
+sudo systemctl status xvfb.service
+sudo systemctl status x11vnc.service
+
+Ambos deberían mostrar Active: active (running).
+
+3.6. Configuración del Firewall (UFW)
+
+Si tu servidor tiene el firewall UFW activo (común en Ubuntu), necesitas abrir el puerto VNC.
+
+sudo ufw allow 5999/tcp
+sudo ufw allow 22/tcp #para las conexiones ssh
+sudo ufw enable # Solo si el firewall no está ya activo
+
+---
+
+4. Parte 2: Preparación del Script en el Servidor
+
+Estos pasos se realizan una sola vez para transferir y configurar tu scraper.
+
+4.1. Transferencia del Script
+
+Desde tu ordenador local, en la carpeta donde tienes linkedin_scraper_chrome.py, comprime la carpeta del proyecto. Asumiremos que tu script está dentro de una carpeta llamada linkedin_scraper_project/.
+
+# Desde la carpeta padre de linkedin_scraper_project/ en tu máquina local
+tar -czvf linkedin_scraper_project.tar.gz linkedin_scraper_project/
+
+Ahora, transfiere este archivo comprimido a tu servidor:
+
+scp linkedin_scraper_project.tar.gz tu_usuario@la_ip_de_tu_servidor:/home/tu_usuario/
+
+(Reemplaza tu_usuario y la_ip_de_tu_servidor con tus datos.)
+
+Luego, conéctate a tu servidor vía SSH y descomprime el archivo:
+
+cd /home/tu_usuario/
+tar -xzvf linkedin_scraper_project.tar.gz
+cd /home/tu_usuario/linkedin_scraper_project/ # Asegúrate de que este sea el nombre de la carpeta de tu proyecto
+
+4.2. Descarga Manual de Chromedriver (Opcional)
+
+El paquete undetected-chromedriver a menudo puede descargar y gestionar chromedriver automáticamente. Sin embargo, si deseas controlarlo manualmente o encuentras problemas, puedes descargarlo de la siguiente manera:
+
+1. Obtén la versión de Chrome instalada en tu servidor:
+   google-chrome --product-version
+   Anota la versión (por ejemplo, 126.0.6478.126). Solo necesitas los primeros números antes del primer punto para buscar chromedriver (ej. 126).
+
+2. Visita la página de Chrome for Testing en tu navegador local:
+   https://googlechromelabs.github.io/chrome-for-testing/
+   Busca la sección "Stable" (o la versión que coincida con la que tienes) y dentro de ella, la entrada "ChromeDriver". Copia la URL de descarga para la plataforma Linux64. Será un enlace que termina en .zip.
+
+3. Descarga y extrae Chromedriver en tu servidor:
+   En la terminal de tu servidor (asegúrate de estar dentro de tu carpeta de proyecto /home/tu_usuario/linkedin_scraper_project/), ejecuta los siguientes comandos. Reemplaza URL_DE_DESCARGA_CHROMEDRIVER con la URL que copiaste en el paso anterior.
+
+   sudo apt install unzip -y # Asegúrate de tener unzip instalado
+   wget URL_DE_DESCARGA_CHROMEDRIVER -O chromedriver_linux64.zip
+   unzip chromedriver_linux64.zip
+   # El archivo chromedriver descomprimido estará en una carpeta como 'chromedriver-linux64/'
+   # Mueve el ejecutable chromedriver directamente a la carpeta de tu proyecto
+   mv chromedriver-linux64/chromedriver .
+   # Elimina los archivos y carpetas temporales
+   rm -rf chromedriver-linux64/ chromedriver_linux64.zip
+
+   Esto descargará chromedriver y lo moverá al directorio de tu proyecto, listo para ser usado.
+
+4.3. Instalación de Dependencias de Python
+
+Asegúrate de estar en el directorio de tu proyecto:
+
+(RECOMENDABLE CREAR EN EL DIRECTORIO DEL PROYECTO UN ENTORNO VIRTUAL SI NO LO HAS HECHO YA!!!)
+
+cd /home/tu_usuario/linkedin_scraper_project/
+pip install selenium undetected-chromedriver
+
+4.4. Configuración de Permisos de Chromedriver
+
+Dale permisos de ejecución al chromedriver (ya sea que lo hayas descargado manualmente o que undetected-chromedriver lo haya puesto ahí):
+
+cd /home/tu_usuario/linkedin_scraper_project/
+chmod +x chromedriver
+
+4.5. Actualización de Credenciales en el Script
+
+Abre tu script en el servidor para introducir tus credenciales de LinkedIn:
+
+nano /home/tu_usuario/linkedin_scraper_project/linkedin_scraper_chrome.py
+
+Busca las líneas EMAIL = "" y PASSWORD = "" y rellénalas con tu email y contraseña de LinkedIn:
+
+EMAIL = "tu_email_de_linkedin@ejemplo.com"
+PASSWORD = "tu_contraseña_de_linkedin"
+
+Guarda y cierra el archivo (Ctrl+X, Y, Enter).
+
+4.6. Configuración del Entorno de Pantalla en el Script
+
+¡Muy importante! Asegúrate de que tu script sepa dónde está la pantalla virtual. Abre el script de nuevo:
+
+nano /home/tu_usuario/linkedin_scraper_project/linkedin_scraper_chrome.py
+
+Al inicio del script, después de las líneas import os, añade:
+
+import os
+# ... (resto de tus importaciones) ...
+
+# Configurar el DISPLAY para que Selenium use la pantalla virtual Xvfb
+os.environ['DISPLAY'] = ':99'
+
+# ... (resto del código del script) ...
+
+Guarda y cierra el archivo (Ctrl+X, Y, Enter).
+
+---
+
+5. Parte 3: Primera Ejecución y Autenticación de LinkedIn (Intervención Manual)
+
+Esta es la parte crucial para la primera autenticación de LinkedIn, o en cualquier momento que LinkedIn te presente un desafío de seguridad (como un puzzle CAPTCHA).
+
+5.1. Conexión al Servidor VNC (Detallado)
+
+Para interactuar visualmente con el navegador en tu servidor, usarás un cliente VNC.
+
+1. Elige un cliente VNC en tu ordenador local:
+    * Windows: TightVNC Viewer o RealVNC Viewer.
+    * macOS: RealVNC Viewer o el cliente VNC incorporado (Finder -> Ir -> Conectarse al servidor -> vnc:// + dirección).
+    * Linux: remmina, vinagre, o tightvncviewer.
+
+2. Determina la dirección de conexión VNC: Esto depende de si configuraste el servicio x11vnc con o sin la opción -localhost. La guía actual lo configura con -localhost por seguridad.
+
+    * Opción SEGURA (Recomendado - Túnel SSH):
+        * Este método es más seguro porque el tráfico VNC viaja cifrado a través de SSH.
+        * Desde tu terminal local (no la del servidor), abre un túnel SSH:
+            ssh -L 5999:localhost:5999 tu_usuario@la_ip_de_tu_servidor
+            Mantén esta ventana de terminal SSH abierta y no la cierres. Es el túnel.
+        * Ahora, en tu cliente VNC (el programa que descargaste e instalaste), la dirección a introducir será:
+            localhost:5999
+            o simplemente localhost::5999 (algunos clientes VNC requieren dos puntos).
+
+    * Opción MENOS SEGURA (Acceso Directo - Solo si eliminaste -localhost del archivo de servicio x11vnc.service y abriste el puerto 5999 en el firewall para acceso público):
+        * En tu cliente VNC, la dirección a introducir será:
+            la_ip_de_tu_servidor:5999
+            o la_ip_de_tu_servidor::5999.
+
+3. Conectar y Entrar Contraseña:
+    * Una vez que ingreses la dirección en tu cliente VNC y hagas clic en "Conectar" (o similar), se te pedirá la contraseña VNC que creaste en el paso 1.4.4 (vncpasswd).
+    * Al introducirla correctamente, deberías ver el escritorio ligero Xfce (con un fondo de pantalla azul o gris, un panel en la parte superior/inferior) de tu servidor dentro de la ventana de tu cliente VNC.
+
+Si la pantalla se ve completamente negra:
+
+Crea el archivo de servicio para Xfce:
+
+Bash
+
+sudo nano /etc/systemd/system/xfce4-session.service
+Pega el siguiente contenido en el archivo:
+
+Ini, TOML
+
+[Unit]
+Description=XFCE4 Session for Xvfb
+After=xvfb.service
+
+[Service]
+User=outbounders
+Group=outbounders
+Environment="DISPLAY=:99"
+ExecStart=/usr/bin/startxfce4
+Type=simple
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+After=xvfb.service: Asegura que Xfce se inicie solo después de que Xvfb esté en funcionamiento.
+
+User=outbounders / Group=outbounders: Esto es crucial para que Xfce se ejecute bajo tu usuario.
+
+Environment="DISPLAY=:99": Le dice a startxfce4 que inicie en el display virtual que Xvfb ha creado.
+
+ExecStart=/usr/bin/startxfce4: El comando para iniciar Xfce. (Hemos verificado antes que /usr/bin/startxfce4 es la ruta correcta).
+
+Guarda y sal del editor:
+Presiona Ctrl+X, luego Y (para confirmar), y luego Enter.
+
+Recarga systemd, habilita e inicia el nuevo servicio:
+
+sudo systemctl daemon-reload
+sudo systemctl enable xfce4-session.service
+sudo systemctl start xfce4-session.service
+
+Verifica el estado del nuevo servicio:
+
+sudo systemctl status xfce4-session.service
+
+Debería mostrar Active: active (running).
+
+Reinicia el servicio X11VNC para asegurar que se conecte a la sesión Xfce ya iniciada:
+
+sudo systemctl restart x11vnc.service
+sudo systemctl status x11vnc.service
+
+Debería seguir mostrando Active: active (running).
+
+Si el fallo permanece:
+
+sudo apt update
+sudo apt install dbus-x11 -y
+sudo systemctl restart xvfb.service
+sudo systemctl restart xfce4-session.service
+sudo systemctl restart x11vnc.service
+
+5.2. Ejecución del Script y Resolución del Puzzle
+
+1. Dentro del escritorio VNC (que ves a través de tu cliente VNC), busca y abre una aplicación de "Terminal". Normalmente, hay un icono en el panel o puedes buscarla en el menú de aplicaciones de Xfce.
+2. Navega al directorio de tu script:
+   cd /home/tu_usuario/linkedin_scraper_project/
+   (Recuerda reemplazar tu_usuario con el nombre de usuario real.)
+3. Ejecuta el script:
+
+   Instala disutils
+
+   sudo apt update
+   sudo apt install python3-distutils -y
+
+   Activa el entorno virtual
+
+   source venv/bin/actívate
+
+   python3 linkedin_scraper_chrome.py "https://www.linkedin.com/in/nombre-del-perfil-linkedin/"
+   (Reemplaza la URL del perfil con el que quieras scrapear. Para la primera prueba, puedes usar tu propio perfil o uno público que no te importe scrapear.)
+
+4. ¡ATENCIÓN! INTERVENCIÓN MANUAL PARA EL LOGIN Y PUZZLE (Si ocurre):
+    * El script iniciará un navegador Chrome dentro de la ventana de tu cliente VNC.
+    * Si el script aún no está logueado, intentará introducir tus credenciales.
+    * Es muy probable que LinkedIn te muestre un puzzle de seguridad ("Let's do a quick security check") o una pantalla de verificación de código por email.
+    * En este momento, el script se pausará en la terminal VNC con un mensaje similar a:
+        ¡ATENCIÓN! Parece que LinkedIn requiere una verificación manual. Por favor, completa la verificación en el navegador VNC y presiona ENTER aquí.
+    * No presiones Enter todavía en la terminal VNC. Primero, ve a la ventana del navegador Chrome que se ha abierto dentro de tu cliente VNC:
+        * Si es un puzzle de arrastrar, haz clic en "Start puzzle" o similar y resuelve el desafío visual moviendo la pieza con el ratón que controlas desde tu ordenador local.
+        * Si te pide un código de verificación (por ejemplo, enviado a tu email), abre tu email por separado (fuera de VNC) para obtener el código e introdúcelo en el campo del navegador dentro de VNC.
+    * Una vez que hayas completado el desafío y veas la página principal de LinkedIn (tu "Feed"), significa que has iniciado sesión con éxito. Ahora, vuelve a la terminal VNC donde se ejecuta el script y presiona la tecla Enter.
+    * El script detectará que la sesión ha sido validada y continuará con el scraping.
+
+5. Verificación: Una vez que el script finalice, la carpeta chrome_profile (o chrome_profile_debug, si el script está configurado así) dentro de linkedin_scraper_project/ en tu servidor contendrá la sesión de LinkedIn ya autenticada.
+
+---
+
+6. Parte 4: Ejecuciones Futuras (Automatizadas)
+
+Una vez que la sesión de LinkedIn está guardada en el perfil del navegador (después de la primera ejecución exitosa), las futuras ejecuciones deberían ser completamente automáticas, sin necesidad de conectarte vía VNC, a menos que LinkedIn pida otra verificación (lo cual es raro si mantienes una actividad regular o si tu IP no cambia drásticamente).
+
+6.1. Ejecución Manual Vía SSH
+
+Simplemente conéctate a tu servidor vía SSH (sin necesidad de abrir un cliente VNC en este caso) y ejecuta el script:
+
+ssh -L puerto:localhost:puerto usuario@la_ip_de_tu_servidor #en nuestro caso puerto será 5999 --> 5999:localhost:5999 …
+cd /home/tu_usuario/linkedin_scraper_project/ o donde este el proyecto
+source venv/bin/activate
+python3 linkedin_scraper_chrome.py "https://www.linkedin.com/in/url-del-siguiente-perfil/"
+
+El script utilizará el entorno gráfico virtual en segundo plano para abrir Chrome y realizar el scraping, y como la sesión ya está guardada, no debería pedirte que interactúes.
+
+---
+
+7. Solución de Problemas Comunes
+
+* Error "Permission denied" en logs de VNC: Asegúrate de que la ruta del archivo de log en x11vnc.service esté en tu directorio de usuario (/home/tu_usuario/x11vnc.log).
+* Servicio xvfb o x11vnc no se inicia (systemctl status "activating" o "failed"):
+    * Revisa el archivo .service correspondiente para errores de sintaxis (User=test sin comentarios al lado, etc.).
+    * Usa journalctl -xeu nombre_del_servicio para ver mensajes de error detallados.
+* No puedes conectar al VNC:
+    * Asegúrate de que el puerto 5999 esté abierto en el firewall del servidor (sudo ufw status).
+    * Verifica que los servicios xvfb y x11vnc estén activos (sudo systemctl status ...).
+    * Si usaste el túnel SSH, asegúrate de que la terminal SSH con el túnel esté abierta y que te estás conectando a localhost:5999 en tu cliente VNC.
+    * Verifica la contraseña VNC.
+* Selenium no abre Chrome o lanza errores relacionados con el display:
+    * Asegúrate de que os.environ['DISPLAY'] = ':99' esté al inicio de tu script Python.
+    * Verifica que xvfb.service esté active (running).
+
+---
+
+8. Notas Importantes
+
+* Seguridad de VNC: VNC por sí solo no cifra la conexión. Si necesitas acceder a la interfaz gráfica del servidor desde fuera de tu red local, siempre usa un túnel SSH (como se explica en la sección 5.1) para cifrar el tráfico.
+* Puzzles de LinkedIn: La primera ejecución (y ocasionalmente las futuras si LinkedIn detecta un cambio inusual en el patrón de acceso o la IP) podría requerir tu intervención manual. El script está diseñado para pausarse y permitirte resolver el puzzle a través de VNC.
+* Mantenimiento del Servidor: Realiza actualizaciones regulares (sudo apt update && sudo apt upgrade -y) para mantener el sistema seguro y estable.
+
+---
