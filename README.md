@@ -93,7 +93,7 @@ python linkedin_scraper.py https://www.linkedin.com/in/username-ABC123XYZ/
 - Replace the URL with the target profile’s public URL.
 - The scraper will:
   1. Launch Edge with your profile.
-  2. Log in (if credentials are provided).
+  2. Log in (if credentials are provided). You can automatizate this process by logging in the first time and omitting future logins.
   3. Scroll and extract every section.
   4. Save the results as `username.json` (underscores replace dashes).
 
