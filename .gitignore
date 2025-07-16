@@ -1,6 +1,0 @@
-# Ignorar scrapers personales
-linkedin_scraper_personal.py
-scraperV1.py
-
-# Ignorar Python cache folders
-__pycache__/
