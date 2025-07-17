@@ -1,6 +1,8 @@
-# LinkedIn Profile Scraper
+# LinkedIn Profile Scraper -- READ!!
 
 A lightweight Python tool that uses Selenium and EdgeDriver to scrape public LinkedIn profiles and export all data in structured JSON.
+
+This branch it's prepared for being used at a Windows OS with GUI. For a Linux OS (with or without GUI) check [LinuxNoGUI](https://github.com/Bicomino/LinkedIn-Scraper/tree/LinuxNoGUI) branch of this repo.
 
 ---
 
